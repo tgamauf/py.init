@@ -172,7 +172,9 @@ def init_from_file(file, *, overrides={}, init_logging=True):
     See the documentation of :func:`.init` for a description of all keyword
     arguments.
     """
-    return init(parse_config_file(file, return_configparser=init_logging),
+    return init(parse_config_file(file,
+                                  return_configparser=init_logging,
+                                  overrides=overrides),
                 overrides=overrides,
                 init_logging=init_logging)
 

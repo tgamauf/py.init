@@ -25,7 +25,7 @@
 # the discretion of STRG.AT GmbH also the competent court, in whose district the
 # Licensee has his registered seat, an establishment or assets.
 
-from collections import OrderedDict
+from collections import OrderedDict, Sequence
 import configparser
 import os
 import re
@@ -39,7 +39,7 @@ from glob import glob
 log = logging.getLogger(__name__)
 
 
-def parse(file, *, recurse=True, return_configparser=False):
+def parse(file, *, recurse=True, return_configparser=False, overrides={}):
     """
     Reads a configuration file and returns a nested `dict`.
 
@@ -55,6 +55,9 @@ def parse(file, *, recurse=True, return_configparser=False):
     follows:
 
     - The file is parsed using the :class:`configparser.ExtendedInterpolation`.
+    - If the keys ``include`` or ``based_on`` are found in the ``score.init``
+      section of overrides, the corresponding keys in the dictionary that is
+      the result of parsing the file are replaced.
     - If there is no section ``score.init``, or that section does not have a key
       ``based_on``, the parsed configuration is returned as-is. At this point
       the function was just used to parse the given file as a stand-alone file.
@@ -158,7 +161,7 @@ def parse(file, *, recurse=True, return_configparser=False):
         |bar  +  |+baz  =>  |baz
 
     """
-    parser = _parse(file, [], recurse)
+    parser = _parse(file, [], recurse, overrides)
     if return_configparser:
         return parser
     result = OrderedDict()
@@ -170,7 +173,26 @@ def parse(file, *, recurse=True, return_configparser=False):
     return result
 
 
-def _parse(file, visited, recurse=True):
+def _replace_settings_by_overrides(settings, overrides, key):
+    """ Replace based_on and include values in settings. """
+
+    if key not in overrides['score.init']:
+        return settings
+
+    value = overrides['score.init'][key]
+
+    if not isinstance(value, Sequence) or isinstance(value, str):
+        log.warning("invalid 'score.init' override value '%s' for '%s'"
+                    % (value, key))
+        return settings
+
+    value_string = "\n".join(value)
+    settings['score.init'][key] = value_string
+
+    return settings
+
+
+def _parse(file, visited, recurse=True, overrides={}):
     """
     Helper function for :func:`parse`, needed for hiding the *visited*
     parameter in the public API. The purpose of that parameter is to prevent
@@ -187,6 +209,10 @@ def _parse(file, visited, recurse=True):
         settings.read_file(fp)
     if not recurse or 'score.init' not in settings:
         return settings
+    if 'score.init' in overrides:
+        settings = _replace_settings_by_overrides(settings, overrides, 'based_on')
+        settings = _replace_settings_by_overrides(settings, overrides, 'include')
+
     files = []
     visited.append(os.path.abspath(file))
     if 'based_on' in settings['score.init']:
